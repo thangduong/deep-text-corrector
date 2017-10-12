@@ -10,8 +10,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.contrib import legacy_seq2seq as seq2seq
 
-import seq2seq
+#import seq2seq
 from data_reader import PAD_ID, GO_ID
 
 
@@ -88,7 +89,7 @@ class TextCorrectorModel(object):
                                                np.zeros(self.target_vocab_size),
                                                shape=[self.target_vocab_size],
                                                dtype=tf.float32)
-        batched_corrective_tokens = tf.pack(
+        batched_corrective_tokens = tf.stack(
             [corrective_tokens_tensor] * self.batch_size)
         self.batch_corrective_tokens_mask = batch_corrective_tokens_mask = \
             tf.placeholder(
@@ -111,20 +112,20 @@ class TextCorrectorModel(object):
 
             output_projection = (w, b)
 
-            def sampled_loss(inputs, labels):
+            def sampled_loss(labels, logits):
                 labels = tf.reshape(labels, [-1, 1])
-                return tf.nn.sampled_softmax_loss(w_t, b, inputs, labels,
+                return tf.nn.sampled_softmax_loss(w_t, b, labels, logits,
                                                   num_samples,
                                                   self.target_vocab_size)
             softmax_loss_function = sampled_loss
 
         # Create the internal multi-layer cell for our RNN.
-        single_cell = tf.nn.rnn_cell.GRUCell(size)
+        single_cell = tf.contrib.rnn.GRUCell(size)
         if use_lstm:
-            single_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
+            single_cell = tf.contrib.rnn.BasicLSTMCell(size)
         cell = single_cell
         if num_layers > 1:
-            cell = tf.nn.rnn_cell.MultiRNNCell([single_cell] * num_layers)
+            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
 
         # The seq2seq function: we use embedding for the input and attention.
         def seq2seq_f(encoder_inputs, decoder_inputs, do_decode):
@@ -167,7 +168,7 @@ class TextCorrectorModel(object):
 
         # Training outputs and losses.
         if forward_only:
-            self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
+            self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
                 self.encoder_inputs, self.decoder_inputs, targets,
                 self.target_weights, buckets,
                 lambda x, y: seq2seq_f(x, y, True),
@@ -185,7 +186,7 @@ class TextCorrectorModel(object):
                                                      input_bias)
                         for output in self.outputs[b]]
         else:
-            self.outputs, self.losses = tf.nn.seq2seq.model_with_buckets(
+            self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
                 self.encoder_inputs, self.decoder_inputs, targets,
                 self.target_weights, buckets,
                 lambda x, y: seq2seq_f(x, y, False),
@@ -212,7 +213,7 @@ class TextCorrectorModel(object):
         self.saver = tf.train.Saver(tf.all_variables())
 
     def build_input_bias(self, encoder_inputs, batch_corrective_tokens_mask):
-        packed_one_hot_inputs = tf.one_hot(indices=tf.pack(
+        packed_one_hot_inputs = tf.one_hot(indices=tf.stack(
             encoder_inputs, axis=1), depth=self.target_vocab_size)
         return tf.maximum(batch_corrective_tokens_mask,
                           tf.reduce_max(packed_one_hot_inputs,
