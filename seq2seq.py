@@ -102,7 +102,7 @@ def _extract_argmax_and_embed(embedding,
     emb_prev = embedding_ops.embedding_lookup(embedding, prev_symbol)
     if not update_embedding:
       emb_prev = array_ops.stop_gradient(emb_prev)
-    return emb_prev
+    return emb_prev, prev_symbol
 
   return loop_function
 
@@ -671,7 +671,7 @@ def attention_decoder(decoder_inputs,
       # If loop_function is set, we use it instead of decoder_inputs.
       if loop_function is not None and prev is not None:
         with variable_scope.variable_scope("loop_function", reuse=True):
-          inp = loop_function(prev, i)
+          inp, inp_symbol = loop_function(prev, i)
       # Merge input and previous attentions into one vector of the right size.
       input_size = inp.get_shape().with_rank(2)[1]
       if input_size.value is None:
@@ -709,7 +709,8 @@ def embedding_attention_decoder(decoder_inputs,
                                 update_embedding_for_previous=True,
                                 dtype=None,
                                 scope=None,
-                                initial_state_attention=False):
+                                initial_state_attention=False,
+                                loop_fn_factory=_extract_argmax_and_embed):
   """RNN decoder with embedding and attention and a pure-decoding option.
 
   Args:
@@ -765,7 +766,7 @@ def embedding_attention_decoder(decoder_inputs,
 
     embedding = variable_scope.get_variable("embedding",
                                             [num_symbols, embedding_size])
-    loop_function = _extract_argmax_and_embed(
+    loop_function = loop_fn_factory(
         embedding, output_projection,
         update_embedding_for_previous) if feed_previous else None
     emb_inp = [
@@ -793,7 +794,8 @@ def embedding_attention_seq2seq(encoder_inputs,
                                 feed_previous=False,
                                 dtype=None,
                                 scope=None,
-                                initial_state_attention=False):
+                                initial_state_attention=False,
+                                loop_fn_factory=_extract_argmax_and_embed):
   """Embedding sequence-to-sequence model with attention.
 
   This model first embeds encoder_inputs by a newly created embedding (of shape
@@ -873,7 +875,8 @@ def embedding_attention_seq2seq(encoder_inputs,
           output_size=output_size,
           output_projection=output_projection,
           feed_previous=feed_previous,
-          initial_state_attention=initial_state_attention)
+          initial_state_attention=initial_state_attention,
+          loop_fn_factory=loop_fn_factory)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
@@ -892,7 +895,8 @@ def embedding_attention_seq2seq(encoder_inputs,
             output_projection=output_projection,
             feed_previous=feed_previous_bool,
             update_embedding_for_previous=False,
-            initial_state_attention=initial_state_attention)
+            initial_state_attention=initial_state_attention,
+            loop_fn_factory = loop_fn_factory)
         state_list = [state]
         if nest.is_sequence(state):
           state_list = nest.flatten(state)
