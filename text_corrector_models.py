@@ -10,9 +10,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.contrib import legacy_seq2seq as seq2seq
+#from tensorflow.contrib import legacy_seq2seq as seq2seq
 
-#import seq2seq
+import seq2seq
 from data_reader import PAD_ID, GO_ID
 
 
@@ -155,8 +155,7 @@ class TextCorrectorModel(object):
                     embedding_size=size,
                     output_projection=output_projection,
                     feed_previous=do_decode,
-                    loop_fn_factory=
-                    apply_input_bias_and_extract_argmax_fn_factory(input_bias))
+                    loop_fn_factory=apply_input_bias_and_extract_argmax_fn_factory(input_bias))
             else:
                 return seq2seq.embedding_attention_seq2seq(
                     encoder_inputs, decoder_inputs, cell,
@@ -168,7 +167,7 @@ class TextCorrectorModel(object):
 
         # Training outputs and losses.
         if forward_only:
-            self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
+            self.outputs, self.losses = seq2seq.model_with_buckets(
                 self.encoder_inputs, self.decoder_inputs, targets,
                 self.target_weights, buckets,
                 lambda x, y: seq2seq_f(x, y, True),
@@ -186,7 +185,7 @@ class TextCorrectorModel(object):
                                                      input_bias)
                         for output in self.outputs[b]]
         else:
-            self.outputs, self.losses = tf.contrib.legacy_seq2seq.model_with_buckets(
+            self.outputs, self.losses = seq2seq.model_with_buckets(
                 self.encoder_inputs, self.decoder_inputs, targets,
                 self.target_weights, buckets,
                 lambda x, y: seq2seq_f(x, y, False),
