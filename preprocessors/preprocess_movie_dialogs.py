@@ -18,6 +18,8 @@ def main(_):
             dialog_line = parts[-1]
             s = dialog_line.strip().lower() #.decode("utf-8", "ignore")
             preprocessed_line = " ".join(nltk.word_tokenize(s))
+            if len(preprocessed_line) == 0 or preprocessed_line=="\x00":
+                continue
             out.write(preprocessed_line + "\n")
 
 if __name__ == "__main__":

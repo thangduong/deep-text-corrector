@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import nltk
 
 from data_reader import DataReader, PAD_TOKEN, EOS_TOKEN, GO_TOKEN
 
@@ -107,6 +108,25 @@ class MovieDialogReader(DataReader):
 
             yield source, target
 
+    def read_samples_from_string(self, string):
+        tokens = nltk.word_tokenize(string.strip().lower())
+        source = []
+        target = []
+
+        for token in tokens:
+            target.append(token)
+
+            # Randomly dropout some words from the input.
+            dropout_token = (token in MovieDialogReader.DROPOUT_TOKENS and
+                            random.random() < self.dropout_prob)
+            replace_token = (token in MovieDialogReader.REPLACEMENTS and
+                            random.random() < self.replacement_prob)
+            if replace_token:
+                source.append(MovieDialogReader.REPLACEMENTS[token])
+            elif not dropout_token:
+                source.append(token)
+        yield source, target
+
     def unknown_token(self):
         return MovieDialogReader.UNKNOWN_TOKEN
 
@@ -114,4 +134,30 @@ class MovieDialogReader(DataReader):
         with open(path, "r") as f:
             for line in f:
                 yield line.lower().strip().split()
+
+
+class WikiDataReader(DataReader):
+    def __init__(self, config, train_path=None, token_to_id=None,
+                 dropout_prob=0.25, replacement_prob=0.25, dataset_copies=2):
+        super(WikiDataReader, self).__init__(
+            config, train_path=train_path, token_to_id=token_to_id,
+            special_tokens=[
+                PAD_TOKEN, GO_TOKEN, EOS_TOKEN,
+                MovieDialogReader.UNKNOWN_TOKEN],
+            dataset_copies=dataset_copies)
+        self._train_path = train_path
+
+    def read_samples_by_string(self, path):
+        for in_tokens, out_tokens in zip(self.read_tokens(path[0]),self.read_tokens(path[1])):
+            yield in_tokens, out_tokens
+
+
+    def unknown_token(self):
+        return MovieDialogReader.UNKNOWN_TOKEN
+
+    def read_tokens(self, path):
+        with open(path, "r") as f:
+            for line in f:
+                yield line.lower().strip().split()
+
 

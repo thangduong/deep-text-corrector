@@ -28,9 +28,11 @@ class DataReader(object):
             self.token_to_id = token_to_id
         else:
             token_counts = Counter()
-
-            for tokens in self.read_tokens(train_path):
-                token_counts.update(tokens)
+            if not type(train_path) is list:
+                train_path = [train_path]
+            for cur_train_path in train_path:
+                for tokens in self.read_tokens(cur_train_path):
+                    token_counts.update(tokens)
 
             self.token_counts = token_counts
 
@@ -46,6 +48,7 @@ class DataReader(object):
             self.token_to_id = dict(full_token_and_id[:max_vocabulary_size])
 
         self.id_to_token = {v: k for k, v in self.token_to_id.items()}
+
 
     def read_tokens(self, path):
         """

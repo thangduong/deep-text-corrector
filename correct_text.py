@@ -25,7 +25,7 @@ import numpy as np
 import tensorflow as tf
 
 from data_reader import EOS_ID
-from text_corrector_data_readers import MovieDialogReader, PTBDataReader
+from text_corrector_data_readers import MovieDialogReader, PTBDataReader, WikiDataReader
 
 from text_corrector_models import TextCorrectorModel
 
@@ -41,6 +41,7 @@ tf.app.flags.DEFINE_boolean("decode", False, "Whether we should decode data "
                                              "at test_path. The default is to "
                                              "train a model and save it at "
                                              "model_path.")
+tf.app.flags.DEFINE_string("test_string", "", "string to correct")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -85,6 +86,28 @@ class DefaultPTBConfig():
 
 
 class DefaultMovieDialogConfig():
+    buckets = [(10, 10), (15, 15), (20, 20), (40, 40)]
+
+    steps_per_checkpoint = 100
+    max_steps = 20000
+
+    # The OOV resolution scheme used in decode() allows us to use a much smaller
+    # vocabulary.
+    max_vocabulary_size = 2000
+
+    size = 512
+    num_layers = 4
+    max_gradient_norm = 5.0
+    batch_size = 64
+    learning_rate = 0.5
+    learning_rate_decay_factor = 0.99
+
+    use_lstm = True
+    use_rms_prop = False
+
+    projection_bias = 0.0
+
+class DefaultWikiConfig():
     buckets = [(10, 10), (15, 15), (20, 20), (40, 40)]
 
     steps_per_checkpoint = 100
@@ -404,9 +427,11 @@ def main(_):
         config = DefaultMovieDialogConfig()
     elif FLAGS.config == "DefaultPTBConfig":
         config = DefaultPTBConfig()
+    elif FLAGS.config == "DefaultWikiConfig":
+        config = DefaultWikiConfig()
     else:
         raise ValueError("config argument not recognized; must be one of: "
-                         "TestConfig, DefaultPTBConfig, "
+                         "TestConfig, DefaultPTBConfig, DefaultWikiConfig, "
                          "DefaultMovieDialogConfig")
 
     # Determine which kind of DataReader we want to use.
@@ -414,25 +439,40 @@ def main(_):
         data_reader = MovieDialogReader(config, FLAGS.train_path)
     elif FLAGS.data_reader_type == "PTBDataReader":
         data_reader = PTBDataReader(config, FLAGS.train_path)
+    elif FLAGS.data_reader_type == "WikiDataReader":
+        train_path = [os.path.join(FLAGS.train_path,"wiki2017CleanChainLifetime.enz_train.txt"),
+                     os.path.join(FLAGS.train_path, "wiki2017CleanChainLifetime.enu_train.txt")]
+        val_path = [os.path.join(FLAGS.val_path,"wiki2017CleanChainLifetime.enz_val.txt"),
+                     os.path.join(FLAGS.val_path, "wiki2017CleanChainLifetime.enu_val.txt")]
+        data_reader = WikiDataReader(config, train_path)
     else:
         raise ValueError("data_reader_type argument not recognized; must be "
-                         "one of: MovieDialogReader, PTBDataReader")
+                         "one of: MovieDialogReader, PTBDataReader, WikiDataReader")
 
     if FLAGS.decode:
+#        data_to_decode=data_reader.read_samples_from_string(FLAGS.test_string)
+#        print(list(data_to_decode))
+#        exit(0)
+
         # Decode test sentences.
         with tf.Session() as session:
             model = create_model(session, True, FLAGS.model_path, config=config)
             print("Loaded model. Beginning decoding.")
-            decodings = decode(session, model=model, data_reader=data_reader,
-                               data_to_decode=data_reader.read_tokens(
-                                   FLAGS.test_path), verbose=True)
+            if FLAGS.test_string != "":
+                decodings = decode(session, model=model, data_reader=data_reader,
+                                   data_to_decode=data_reader.read_samples_from_string(
+                                       FLAGS.test_string), verbose=True)
+            else:
+                decodings = decode(session, model=model, data_reader=data_reader,
+                                   data_to_decode=data_reader.read_tokens(
+                                       FLAGS.test_path), verbose=True)
             # Write the decoded tokens to stdout.
             for tokens in decodings:
                 print(" ".join(tokens))
                 sys.stdout.flush()
     else:
         print("Training model.")
-        train(data_reader, FLAGS.train_path, FLAGS.val_path, FLAGS.model_path)
+        train(data_reader, train_path, val_path, FLAGS.model_path)
 
 
 if __name__ == "__main__":
