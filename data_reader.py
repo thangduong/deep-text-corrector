@@ -59,7 +59,7 @@ class DataReader(object):
                     print('saving to cache: %s'%cache_hash)
                     pickle.dump([self.token_counts, self.full_token_to_id, self.token_to_id], f)
 
-
+        print("vocab size = %s"%len(self.token_to_id))
         self.id_to_token = {v: k for k, v in self.token_to_id.items()}
 
 

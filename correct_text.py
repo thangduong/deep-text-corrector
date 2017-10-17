@@ -23,7 +23,7 @@ from collections import defaultdict
 
 import numpy as np
 import tensorflow as tf
-
+from urllib.parse import urlparse
 from data_reader import EOS_ID
 from text_corrector_data_readers import MovieDialogReader, PTBDataReader, WikiDataReader
 
@@ -37,12 +37,14 @@ tf.app.flags.DEFINE_string("val_path", "val", "Validation data path.")
 tf.app.flags.DEFINE_string("test_path", "test", "Testing data path.")
 tf.app.flags.DEFINE_string("model_path", "model", "Path where the model is "
                                                   "saved.")
-tf.app.flags.DEFINE_boolean("decode", False, "Whether we should decode data "
-                                             "at test_path. The default is to "
-                                             "train a model and save it at "
-                                             "model_path.")
+tf.app.flags.DEFINE_string("task", "train", "train, decode, serve")
+#tf.app.flags.DEFINE_boolean("decode", False, "Whether we should decode data "
+#                                             "at test_path. The default is to "
+#                                             "train a model and save it at "
+#                                             "model_path.")
 tf.app.flags.DEFINE_string("test_string", "", "string to correct")
-
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import time
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -89,11 +91,11 @@ class DefaultMovieDialogConfig():
     buckets = [(10, 10), (15, 15), (20, 20), (40, 40)]
 
     steps_per_checkpoint = 100
-    max_steps = 20000
+    max_steps = 2000000
 
     # The OOV resolution scheme used in decode() allows us to use a much smaller
     # vocabulary.
-    max_vocabulary_size = 2000
+    max_vocabulary_size = 100000
 
     size = 512
     num_layers = 4
@@ -111,11 +113,11 @@ class DefaultWikiConfig():
     buckets = [(10, 10), (15, 15), (20, 20), (40, 40)]
 
     steps_per_checkpoint = 100
-    max_steps = 20000
+    max_steps = 2000000
 
     # The OOV resolution scheme used in decode() allows us to use a much smaller
     # vocabulary.
-    max_vocabulary_size = 2000
+    max_vocabulary_size = 100000
 
     size = 512
     num_layers = 4
@@ -146,7 +148,8 @@ def create_model(session, forward_only, model_path, config=TestConfig()):
         forward_only=forward_only,
         config=config)
     ckpt = tf.train.get_checkpoint_state(model_path)
-    print("check point path: %s"%ckpt.model_checkpoint_path)
+    if ckpt is not None:
+        print("check point path: %s"%ckpt.model_checkpoint_path)
     if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path+'.index'):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
@@ -421,6 +424,26 @@ def evaluate_accuracy(sess, model, data_reader, corrective_tokens, test_path,
 
     return errors
 
+class HttpHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        parsed_path = urlparse(self.path)
+        if parsed_path.path == "/decode":
+            sentence = parsed_path.query.replace("%20", " ")
+            sentence = sentence.replace("%22", "\"")
+            decodings = next(decode_sentence(self.session, self.model, self.data_reader, sentence))
+            msg = "%s"%' '.join(decodings)
+        elif parsed_path.path == "/":
+            msg = ""
+            with open("index.html", "r") as f:
+                for line in f:
+                    msg += line.replace("___MODEL_NAME___", self.model_name)
+        else:
+            msg = "<html><body>Unhandled URL: %s?%s<br></body></html>"%(parsed_path.path, parsed_path.query)
+        self.wfile.write(bytes(msg, 'utf8'))
 
 def main(_):
     # Determine which config we should use.
@@ -456,7 +479,7 @@ def main(_):
         raise ValueError("data_reader_type argument not recognized; must be "
                          "one of: MovieDialogReader, PTBDataReader, WikiDataReader")
 
-    if FLAGS.decode:
+    if FLAGS.task == "decode":
 #        data_to_decode=data_reader.read_samples_from_string(FLAGS.test_string)
 #        print(list(data_to_decode))
 #        exit(0)
@@ -480,6 +503,23 @@ def main(_):
             for tokens in decodings:
                 print(" ".join(tokens))
                 sys.stdout.flush()
+    elif FLAGS.task == "serve":
+        print('creating session')
+        # Decode test sentences.
+        with tf.Session() as session:
+            print("creating model")
+            model = create_model(session, True, FLAGS.model_path, config=config)
+            HttpHandler.model = model
+            HttpHandler.data_reader = data_reader
+            HttpHandler.session = session
+            HttpHandler.model_name = FLAGS.model_path
+            httpd = HTTPServer(("0.0.0.0", 8080), HttpHandler)
+            try:
+                print("Starting server...")
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                pass
+            httpd.server_close()
     else:
         print("Training model.")
         train(data_reader, train_path, val_path, FLAGS.model_path)
