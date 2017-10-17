@@ -160,4 +160,7 @@ class WikiDataReader(DataReader):
             for line in f:
                 yield line.lower().strip().split()
 
-
+    def read_samples_from_string(self, string):
+        tokens = nltk.word_tokenize(string.strip().lower())
+        print(tokens)
+        return tokens

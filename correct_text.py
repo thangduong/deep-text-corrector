@@ -146,7 +146,8 @@ def create_model(session, forward_only, model_path, config=TestConfig()):
         forward_only=forward_only,
         config=config)
     ckpt = tf.train.get_checkpoint_state(model_path)
-    if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
+    print("check point path: %s"%ckpt.model_checkpoint_path)
+    if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path+'.index'):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
@@ -306,11 +307,12 @@ def decode(sess, model, data_reader, data_to_decode, corrective_tokens=set(),
         next_oov_token_idx = 0
 
         for logit in output_logits:
-
+            print(logit)
             max_likelihood_token_id = int(np.argmax(logit, axis=1))
             # First check to see if this logit most likely points to the EOS
             # identifier.
             if max_likelihood_token_id == EOS_ID:
+                print('GOT EOS')
                 break
 
             token = data_reader.convert_id_to_token(max_likelihood_token_id)
@@ -329,6 +331,7 @@ def decode(sess, model, data_reader, data_to_decode, corrective_tokens=set(),
                     pass
 
             outputs.append(token)
+            print(token)
 
         if verbose:
             decoded_sentence = " ".join(outputs)
@@ -342,7 +345,7 @@ def decode(sess, model, data_reader, data_to_decode, corrective_tokens=set(),
 def decode_sentence(sess, model, data_reader, sentence, corrective_tokens=set(),
                     verbose=True):
     """Used with InteractiveSession in an IPython notebook."""
-    return next(decode(sess, model, data_reader, [sentence.split()],
+    return (decode(sess, model, data_reader, [sentence.split()],
                        corrective_tokens=corrective_tokens, verbose=verbose))
 
 
@@ -437,8 +440,12 @@ def main(_):
     # Determine which kind of DataReader we want to use.
     if FLAGS.data_reader_type == "MovieDialogReader":
         data_reader = MovieDialogReader(config, FLAGS.train_path)
+        train_path = FLAGS.train_path
+        val_path = FLAGS.val_path
     elif FLAGS.data_reader_type == "PTBDataReader":
         data_reader = PTBDataReader(config, FLAGS.train_path)
+        train_path = FLAGS.train_path
+        val_path = FLAGS.val_path
     elif FLAGS.data_reader_type == "WikiDataReader":
         train_path = [os.path.join(FLAGS.train_path,"wiki2017CleanChainLifetime.enz_train.txt"),
                      os.path.join(FLAGS.train_path, "wiki2017CleanChainLifetime.enu_train.txt")]
@@ -453,20 +460,23 @@ def main(_):
 #        data_to_decode=data_reader.read_samples_from_string(FLAGS.test_string)
 #        print(list(data_to_decode))
 #        exit(0)
-
+        print('creating session')
         # Decode test sentences.
         with tf.Session() as session:
+            print("creating model")
             model = create_model(session, True, FLAGS.model_path, config=config)
             print("Loaded model. Beginning decoding.")
             if FLAGS.test_string != "":
-                decodings = decode(session, model=model, data_reader=data_reader,
-                                   data_to_decode=data_reader.read_samples_from_string(
-                                       FLAGS.test_string), verbose=True)
+                decodings = decode_sentence(session, model, data_reader, FLAGS.test_string)
+#                decodings = decode(session, model=model, data_reader=data_reader,
+#                                   data_to_decode=data_reader.read_samples_from_string(
+#                                       FLAGS.test_string), verbose=True)
             else:
                 decodings = decode(session, model=model, data_reader=data_reader,
                                    data_to_decode=data_reader.read_tokens(
                                        FLAGS.test_path), verbose=True)
             # Write the decoded tokens to stdout.
+            print(decodings)
             for tokens in decodings:
                 print(" ".join(tokens))
                 sys.stdout.flush()

@@ -1,9 +1,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 from collections import Counter
-
+import pickle
+import os
 # Define constants associated with the usual special-case tokens.
 PAD_ID = 0
 GO_ID = 1
@@ -30,22 +30,35 @@ class DataReader(object):
             token_counts = Counter()
             if not type(train_path) is list:
                 train_path = [train_path]
-            for cur_train_path in train_path:
-                for tokens in self.read_tokens(cur_train_path):
-                    token_counts.update(tokens)
 
-            self.token_counts = token_counts
+            cache_hash =  train_path[0] + '.pkl'
 
-            # Get to max_vocab_size words
-            count_pairs = sorted(token_counts.items(),
-                                 key=lambda x: (-x[1], x[0]))
-            vocabulary, _ = list(zip(*count_pairs))
-            vocabulary = list(vocabulary)
-            # Insert the special tokens at the beginning.
-            vocabulary[0:0] = special_tokens
-            full_token_and_id = list(zip(vocabulary, range(len(vocabulary))))
-            self.full_token_to_id = dict(full_token_and_id)
-            self.token_to_id = dict(full_token_and_id[:max_vocabulary_size])
+            if os.path.exists(cache_hash):
+                with open(cache_hash, 'rb') as f:
+                    print('loading from cache: %s'%cache_hash)
+                    self.token_counts, self.full_token_to_id, self.token_to_id = pickle.load(f)
+            else:
+
+                for cur_train_path in train_path:
+                    for tokens in self.read_tokens(cur_train_path):
+                        token_counts.update(tokens)
+
+                self.token_counts = token_counts
+
+                # Get to max_vocab_size words
+                count_pairs = sorted(token_counts.items(),
+                                     key=lambda x: (-x[1], x[0]))
+                vocabulary, _ = list(zip(*count_pairs))
+                vocabulary = list(vocabulary)
+                # Insert the special tokens at the beginning.
+                vocabulary[0:0] = special_tokens
+                full_token_and_id = list(zip(vocabulary, range(len(vocabulary))))
+                self.full_token_to_id = dict(full_token_and_id)
+                self.token_to_id = dict(full_token_and_id[:max_vocabulary_size])
+                with open(cache_hash, 'wb') as f:
+                    print('saving to cache: %s'%cache_hash)
+                    pickle.dump([self.token_counts, self.full_token_to_id, self.token_to_id], f)
+
 
         self.id_to_token = {v: k for k, v in self.token_to_id.items()}
 
