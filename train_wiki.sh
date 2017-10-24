@@ -1,3 +1,4 @@
+source ../env/bin/activate
 mkdir ../wiki_model
 python correct_text.py --train_path ../data/ \
                        --val_path ../data/ \
